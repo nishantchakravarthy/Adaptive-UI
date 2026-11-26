@@ -12,33 +12,22 @@ Critical Fixes Applied:
 """
 
 import customtkinter as ctk
-import ctypes
 import logging
 
 logger = logging.getLogger("AdaptiveUI.Overlay")
 
-# ─── Win32 Constants for Click-Through ────────────────────────────────────────
-GWL_EXSTYLE = -20
-WS_EX_LAYERED = 0x00080000
-WS_EX_TRANSPARENT = 0x00000020
-WS_EX_TOOLWINDOW = 0x00000080  # Hide from taskbar
-
-
 def _make_click_through(window):
     """
-    Apply Win32 extended styles to make a window click-through.
-    WS_EX_LAYERED | WS_EX_TRANSPARENT allows the overlay to remain visible
-    but pass all mouse events through to the desktop/apps below.
-    WS_EX_TOOLWINDOW hides it from the taskbar.
+    Make an overlay pass all clicks through to the apps below it.
+    Delegates to the OS layer: Win32 WS_EX_LAYERED | WS_EX_TRANSPARENT |
+    WS_EX_TOOLWINDOW on Windows, ignoresMouseEvents on macOS (matched by the
+    window's unique title), and an empty X11 input shape on Linux.
     """
-    try:
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
-        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        style |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-        logger.debug("Click-through applied to overlay hwnd=%s", hwnd)
-    except Exception as e:
-        logger.warning("Failed to apply click-through style: %s", e)
+    import oslayer
+    if oslayer.make_click_through(window):
+        logger.debug("Click-through applied to overlay %s", window.title())
+    else:
+        logger.warning("Failed to apply click-through style on %s", oslayer.NAME)
 
 
 class OverlayController:
@@ -93,7 +82,7 @@ class OverlayController:
 
     def _build_idle_overlay(self):
         self.idle_win = ctk.CTkToplevel(self.root)
-        self.idle_win.title("")
+        self.idle_win.title("AdaptiveUI overlay idle")
         self.idle_win.geometry(f"{self.screen_w}x{self.screen_h}+0+0")
         self.idle_win.overrideredirect(True)
         self.idle_win.attributes("-topmost", True)
@@ -136,7 +125,7 @@ class OverlayController:
         y = 8
 
         self.focus_win = ctk.CTkToplevel(self.root)
-        self.focus_win.title("")
+        self.focus_win.title("AdaptiveUI overlay focus")
         self.focus_win.geometry(f"{bar_w}x{bar_h}+{x}+{y}")
         self.focus_win.overrideredirect(True)
         self.focus_win.attributes("-topmost", True)
@@ -171,7 +160,7 @@ class OverlayController:
         y = 8
 
         self.active_win = ctk.CTkToplevel(self.root)
-        self.active_win.title("")
+        self.active_win.title("AdaptiveUI overlay active")
         self.active_win.geometry(f"{widget_w}x{widget_h}+{x}+{y}")
         self.active_win.overrideredirect(True)
         self.active_win.attributes("-topmost", True)
@@ -213,7 +202,7 @@ class OverlayController:
         y = 8
 
         self.error_win = ctk.CTkToplevel(self.root)
-        self.error_win.title("")
+        self.error_win.title("AdaptiveUI overlay error")
         self.error_win.geometry(f"{bar_w}x{bar_h}+{x}+{y}")
         self.error_win.overrideredirect(True)
         self.error_win.attributes("-topmost", True)

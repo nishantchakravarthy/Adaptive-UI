@@ -37,6 +37,9 @@ RUNTIME_STATE_FILE = "runtime_state.json"
 def _init_mouse_safety():
     """Capture original speed and recover from past crashes."""
     global _original_mouse_speed
+    if sys.platform != "win32":
+        _original_mouse_speed = None  # mouse-speed effects are Windows-only
+        return
     try:
         # Check for crash recovery
         if os.path.exists(RUNTIME_STATE_FILE):
@@ -175,45 +178,11 @@ def reset_brightness():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FOREGROUND APP (Windows; other platforms arrive with the Phase 7 platform layer)
+# FOREGROUND APP (delegates to the OS layer: Windows, macOS or Linux X11)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 def get_foreground_app():
-    """
-    Return the lower-case executable name of the foreground window's process,
-    for example "code.exe", or None if it cannot be determined.
-    Uses only ctypes (user32 + kernel32), so no pywin32 dependency.
-    """
-    if sys.platform != "win32":
-        return None
-    try:
-        from ctypes import wintypes
-        user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
-
-        hwnd = user32.GetForegroundWindow()
-        if not hwnd:
-            return None
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if not pid.value:
-            return None
-
-        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
-        if not handle:
-            return None
-        try:
-            size = wintypes.DWORD(1024)
-            buf = ctypes.create_unicode_buffer(size.value)
-            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
-                return None
-            return os.path.basename(buf.value).lower() or None
-        finally:
-            kernel32.CloseHandle(handle)
-    except Exception:
-        logger.debug("Foreground app lookup failed", exc_info=True)
-        return None
-
+    """Lower-case process name of the foreground app, or None."""
+    import oslayer
+    return oslayer.get_foreground_app()
