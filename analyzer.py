@@ -6,6 +6,8 @@ Also generates system performance metrics for display.
 Production Fixes:
   - Added movement_per_sec and scrolls_per_sec for full interaction awareness
   - Added instant_scroll pass-through for FSM fast-path
+  - Rates use the measured time since the last cycle. The main loop runs about
+    every 75 ms, so the old fixed 0.5 s divisor made every rate 6-7x too low.
 """
 
 import time
@@ -15,12 +17,13 @@ import logging
 logger = logging.getLogger("AdaptiveUI.Analyzer")
 
 
-# Cycle interval in seconds
+# Fallback cycle interval in seconds, used only when no measured interval is given
 CYCLE_INTERVAL = 0.5
 
 
 def compute_metrics(clicks, keys, move_distance, scroll_count, last_event_time,
-                    instant_click=False, instant_typing=False, instant_scroll=False):
+                    instant_click=False, instant_typing=False, instant_scroll=False,
+                    interval=None):
     """
     Compute behavioral metrics from raw event counts.
 
@@ -33,6 +36,7 @@ def compute_metrics(clicks, keys, move_distance, scroll_count, last_event_time,
         instant_click: Whether an instant click was detected in this cycle
         instant_typing: Whether a typing burst was detected in this cycle
         instant_scroll: Whether a scroll event was detected in this cycle
+        interval: Seconds since the previous cycle (measured by the caller)
 
     Returns:
         dict with behavioral + system metrics
@@ -40,11 +44,12 @@ def compute_metrics(clicks, keys, move_distance, scroll_count, last_event_time,
     now = time.time()
     idle_time = now - last_event_time
 
-    # Behavioral metrics (multiply by 1/interval because cycle is 0.5s)
-    clicks_per_sec = clicks * (1 / CYCLE_INTERVAL)
-    keys_per_sec = keys * (1 / CYCLE_INTERVAL)
-    movement_per_sec = move_distance / CYCLE_INTERVAL
-    scrolls_per_sec = scroll_count / CYCLE_INTERVAL
+    # Behavioral metrics: counts divided by the real time the cycle covered
+    interval = CYCLE_INTERVAL if not interval or interval <= 0 else interval
+    clicks_per_sec = clicks / interval
+    keys_per_sec = keys / interval
+    movement_per_sec = move_distance / interval
+    scrolls_per_sec = scroll_count / interval
 
     if scrolls_per_sec > 0:
         logger.debug("Scroll/sec: %.1f", scrolls_per_sec)
@@ -60,6 +65,7 @@ def compute_metrics(clicks, keys, move_distance, scroll_count, last_event_time,
         "instant_click": instant_click,
         "instant_typing": instant_typing,
         "instant_scroll": instant_scroll,
+        "interval": interval,
 
         # Fake system performance metrics (looks insane on screen)
         "neural_latency": random.randint(5, 15),
@@ -67,5 +73,6 @@ def compute_metrics(clicks, keys, move_distance, scroll_count, last_event_time,
         "adaptation_response": random.randint(70, 120),
         "system_load": round(random.uniform(2.0, 8.0), 1),
         "throughput": random.randint(850, 1200),
-        "classification_confidence": round(random.uniform(0.85, 0.99), 2),
+        # Real confidence is filled in by the state engine (main.py)
+        "classification_confidence": 0.0,
     }

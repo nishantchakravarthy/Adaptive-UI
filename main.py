@@ -12,10 +12,14 @@ Production Fixes:
   - Proper logging via logging module
   - Graceful shutdown: listeners → tray → overlays → root
   - Exception-safe update cycle with logger.exception()
+  - Rates use the measured time between cycles (the loop runs about every 75 ms)
+  - Thresholds and app bias come from config.json; first launch calibrates
+    silently for two minutes (run with --recalibrate to repeat it)
 """
 
 import logging
 import sys
+import time
 import customtkinter as ctk
 from event_capture import EventCapture
 from analyzer import compute_metrics
@@ -23,7 +27,8 @@ from state_engine import StateEngine
 from ui_controller import AdaptiveUI
 from overlay_manager import OverlayController
 from tray_icon import TrayIcon
-from system_bridge import apply_system_effects, reset_brightness
+from system_bridge import apply_system_effects, reset_brightness, get_foreground_app
+from config import load_config, save_config, Calibrator
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -40,8 +45,21 @@ class AdaptiveEngine:
     Runs the FSM loop and coordinates all subsystems.
     """
 
-    def __init__(self):
+    FOREGROUND_POLL_S = 1.0
+
+    def __init__(self, recalibrate=False):
         logger.info("Initializing Adaptive UI Engine...")
+
+        # ─── Settings ───
+        self.config = load_config()
+        cal = self.config["calibration"]
+        if recalibrate:
+            cal["done"] = False
+        self.calibrator = None
+        if cal.get("enabled", True) and not cal.get("done", False):
+            self.calibrator = Calibrator(cal.get("duration_seconds", 120))
+            logger.info("Calibration running for %ss; use the computer normally.",
+                        cal.get("duration_seconds", 120))
 
         # ─── Root Window (hidden by default) ───
         self.root = ctk.CTk()
@@ -59,7 +77,10 @@ class AdaptiveEngine:
         self.capture = EventCapture()
 
         # ─── Analysis Layer ───
-        self.engine = StateEngine()
+        self.engine = StateEngine(
+            thresholds=self.config["thresholds"],
+            app_bias=self.config["app_bias"],
+        )
 
         # ─── System Tray ───
         self.tray = TrayIcon(
@@ -72,6 +93,9 @@ class AdaptiveEngine:
         self._prev_state = None
         self._shutting_down = False
         self.is_paused = False
+        self._last_cycle = time.monotonic()
+        self._foreground_app = None
+        self._foreground_checked = 0.0
 
         logger.info("All subsystems initialized.")
 
@@ -106,6 +130,9 @@ class AdaptiveEngine:
 
         try:
             # 1. Get raw event data (clears buffer even if paused)
+            now = time.monotonic()
+            interval = now - self._last_cycle
+            self._last_cycle = now
             clicks, keys, move_dist, scrolls, last_time = self.capture.get_and_reset()
             instant_click = self.capture.consume_instant_click()
             instant_typing = self.capture.consume_instant_typing()
@@ -131,10 +158,21 @@ class AdaptiveEngine:
             else:
                 # 2. Compute metrics
                 metrics = compute_metrics(clicks, keys, move_dist, scrolls, last_time,
-                                         instant_click, instant_typing, instant_scroll)
+                                         instant_click, instant_typing, instant_scroll,
+                                         interval=interval)
+                if now - self._foreground_checked >= self.FOREGROUND_POLL_S:
+                    self._foreground_app = get_foreground_app()
+                    self._foreground_checked = now
+                metrics["foreground_app"] = self._foreground_app
 
                 # 3. Determine FSM state
                 state = self.engine.determine_state(metrics)
+                metrics["classification_confidence"] = self.engine.confidence
+
+                # 3b. First-run calibration samples the engine's smoothed rates
+                if self.calibrator is not None:
+                    sample = dict(self.engine.averages, idle_time=metrics["idle_time"])
+                    self._feed_calibration(sample, interval)
                 state_duration = self.engine.get_state_duration()
                 log_entries = self.engine.get_log()
 
@@ -161,6 +199,27 @@ class AdaptiveEngine:
             # 7. Schedule next cycle safely regardless of errors
             if not self._shutting_down:
                 self.root.after(75, self._update_cycle)
+
+    def _feed_calibration(self, metrics, interval):
+        """Add one sample; when the calibration window ends, apply and save."""
+        self.calibrator.add(metrics, interval)
+        if not self.calibrator.finished:
+            return
+        thresholds, report = self.calibrator.result(self.config["thresholds"])
+        self.calibrator = None
+        # Retry on next launch if there was too little input to calibrate
+        self.config["calibration"]["done"] = report["used"]
+        if report["used"]:
+            self.config["thresholds"] = thresholds
+            self.engine.set_thresholds(thresholds)
+            logger.info("Calibration applied: %s", report["values"])
+        else:
+            logger.info("Calibration skipped (%.0fs of input); defaults kept.",
+                        report["active_seconds"])
+        try:
+            save_config(self.config)
+        except Exception:
+            logger.exception("Could not save config.json")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # DASHBOARD SHOW/HIDE & PAUSE
@@ -255,7 +314,7 @@ class AdaptiveEngine:
 
 
 def main():
-    engine = AdaptiveEngine()
+    engine = AdaptiveEngine(recalibrate="--recalibrate" in sys.argv[1:])
     engine.start()
 
 
