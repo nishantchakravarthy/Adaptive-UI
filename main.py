@@ -40,10 +40,26 @@ from focus_actions import BreakReminder, WindowsDnd, start_hotkey, hotkey_label
 import oslayer
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
+# Console plus a rotating file (3 x 1 MB) in the app-data folder, so problems
+# on other PCs can be diagnosed from AdaptiveUI/logs/adaptive-ui.log.
+def _log_handlers():
+    handlers = [logging.StreamHandler(sys.stdout)]
+    try:
+        from logging.handlers import RotatingFileHandler
+        from config import config_dir
+        log_dir = os.path.join(config_dir(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        handlers.append(RotatingFileHandler(os.path.join(log_dir, "adaptive-ui.log"),
+                                            maxBytes=1_000_000, backupCount=3, encoding="utf-8"))
+    except Exception:
+        pass  # logging to file is best-effort
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=_log_handlers(),
 )
 logger = logging.getLogger("AdaptiveUI.Main")
 

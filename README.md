@@ -66,8 +66,7 @@ git clone https://github.com/nishantchakravarthy/Adaptive-UI.git
 
 **Install Dependencies:**
 
-
-pip install pynput customtkinter screeninfo Pillow
+pip install -r requirements.txt
 
 **Run the Engine:**
 
@@ -75,8 +74,22 @@ python main.py
 
 **Run the Tests:**
 
-pip install pytest
+pip install -r requirements-dev.txt
 python -m pytest
+
+**Release:** push a tag such as `v2.0.0`. GitHub Actions builds the Windows download (plus experimental macOS and Linux builds), attaches them with SHA-256 checksums, and runs the tests and lint on every push and pull request.
+
+# 🔒 Privacy
+Adaptive UI counts keystrokes, clicks, mouse movement and scrolling. It never records what you type or which keys you press. Session history (state, time, confidence and the foreground app's name) stays in a local SQLite file in your app-data folder (`%APPDATA%/AdaptiveUI` on Windows), is kept for 90 days, and can be deleted. Logs are written to `AdaptiveUI/logs`. Nothing is sent anywhere.
+
+# ⌨️ Controls
+- **Pause / resume:** Ctrl+Alt+P (Cmd+Option+P on macOS), or the tray menu.
+- **Tray menu:** Today's summary, break reminders, Do Not Disturb in focus (experimental, Windows only), start at login, recalibrate, open settings file.
+
+# 🖥️ Platforms
+Windows 11 is the primary target (Windows 10 is best effort; it reached end of support on 14 October 2025). macOS needs Accessibility and Input Monitoring permission; unsigned builds open via System Settings → Privacy & Security → Open Anyway. Linux works on X11 sessions; under Wayland, input from native Wayland apps is not visible.
+
+See `THIRD_PARTY_NOTICES.md` for licences.
 # 🌐 Web Dashboard Demo
 `web/index.html` is a standalone browser version of the dashboard. It runs the same rules and timing as `state_engine.py`: the six states in the same order, a 1.5 s time-weighted average, a 1 s debounce, and the click and typing fast-paths. The rules are embedded from `rules.json`.
 
