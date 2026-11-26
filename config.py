@@ -77,6 +77,10 @@ DEFAULTS = {
         "done": False,
         "duration_seconds": 120,
     },
+    "history": {
+        "enabled": True,
+        "retention_days": 90,
+    },
 }
 
 MIN_CALIBRATION_ACTIVE_S = 60.0

@@ -29,6 +29,7 @@ from overlay_manager import OverlayController
 from tray_icon import TrayIcon
 from system_bridge import apply_system_effects, reset_brightness, get_foreground_app
 from config import load_config, save_config, Calibrator
+from storage import SessionStore
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -60,6 +61,16 @@ class AdaptiveEngine:
             self.calibrator = Calibrator(cal.get("duration_seconds", 120))
             logger.info("Calibration running for %ss; use the computer normally.",
                         cal.get("duration_seconds", 120))
+
+        # ─── Session history (Phase 2) ───
+        self.store = None
+        if self.config["history"].get("enabled", True):
+            try:
+                self.store = SessionStore(retention_days=self.config["history"].get("retention_days", 90))
+            except Exception:
+                logger.exception("Session history disabled: could not open the database")
+        self._seg_state = None
+        self._seg_start = time.time()
 
         # ─── Root Window (hidden by default) ───
         self.root = ctk.CTk()
@@ -176,6 +187,9 @@ class AdaptiveEngine:
                 state_duration = self.engine.get_state_duration()
                 log_entries = self.engine.get_log()
 
+            # 3c. Session history: store the finished segment on every state change
+            self._track_segment(state, metrics)
+
             # 4. Update tray icon state
             self.tray.update_state(state)
 
@@ -199,6 +213,21 @@ class AdaptiveEngine:
             # 7. Schedule next cycle safely regardless of errors
             if not self._shutting_down:
                 self.root.after(75, self._update_cycle)
+
+    def _track_segment(self, state, metrics, closing=False):
+        """Record the previous segment when the state changes (or on exit)."""
+        now = time.time()
+        if self._seg_state is None:
+            self._seg_state, self._seg_start = state, now
+            return
+        if state == self._seg_state and not closing:
+            return
+        if self.store is not None:
+            self.store.record(self._seg_start, now, self._seg_state,
+                              None if closing else state,
+                              metrics.get("classification_confidence"),
+                              self._foreground_app)
+        self._seg_state, self._seg_start = state, now
 
     def _feed_calibration(self, metrics, interval):
         """Add one sample; when the calibration window ends, apply and save."""
@@ -286,6 +315,14 @@ class AdaptiveEngine:
             restore_mouse_speed()
         except Exception:
             logger.exception("Failed to reset system effects")
+
+        try:
+            if self.store is not None:
+                self._track_segment(self._seg_state, {}, closing=True)
+                self.store.close()
+                logger.info("Session history saved.")
+        except Exception:
+            logger.exception("Failed to close session history")
 
         try:
             self.capture.stop()
