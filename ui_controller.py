@@ -9,7 +9,6 @@ Production Fixes:
 """
 
 import customtkinter as ctk
-import time
 import logging
 
 logger = logging.getLogger("AdaptiveUI.Dashboard")

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "order": [
+    "IDLE",
+    "FOCUS",
+    "READING",
+    "ERROR",
+    "ACTIVE",
+    "LIGHT"
+  ],
+  "light_never_interrupts": [
+    "FOCUS",
+    "READING"
+  ],
+  "window_seconds": 1.5,
+  "debounce_seconds": 1.0,
+  "click_hold_seconds": 0.4,
+  "typing_hold_seconds": 0.6,
+  "thresholds": {
+    "idle_seconds": 5.0,
+    "focus_keys": 2.0,
+    "focus_move_max": 50.0,
+    "focus_scroll_max": 2.0,
+    "reading_scroll": 0.3,
+    "reading_keys_max": 1.0,
+    "reading_clicks_max": 1.0,
+    "reading_move_max": 200.0,
+    "error_keys": 4.0,
+    "error_clicks": 3.0,
+    "error_move": 400.0,
+    "active_clicks": 3.0,
+    "active_move": 200.0,
+    "active_scroll": 1.0
+  }
+}

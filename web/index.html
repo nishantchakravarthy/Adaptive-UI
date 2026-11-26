@@ -47,7 +47,7 @@ h1.swap{opacity:0;transform:translateY(12px)}
 .facts{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:22px;font-size:15px;color:var(--mute)}
 .facts b{color:var(--ink);font-weight:600;margin-right:6px}
 /* state switches */
-.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 0 32px}
+.states{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding:0 0 32px}
 .st{border:1px solid var(--hair);border-radius:16px;padding:16px 18px;min-height:112px;display:flex;flex-direction:column;gap:4px;transition:background .6s,color .6s,border-color .6s}
 .st .n{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px}
 .st .n i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
@@ -91,7 +91,8 @@ ol.log time,ol.log .d{color:var(--pdim);white-space:nowrap}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{text-align:left;padding:9px 6px;border-bottom:1px solid var(--pline);vertical-align:top}th{color:var(--pmute);font-weight:500}
 .note{font-size:12px;color:var(--pdim);margin-top:8px}
-@media(max-width:860px){.states{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.states{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.states{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.ctrls{margin-left:0;width:100%}.seg{flex:1}.seg button{flex:1;justify-content:center;padding:0 10px;white-space:nowrap}
   .tab{top:auto;bottom:18px;right:18px;transform:none;writing-mode:horizontal-tb;border-radius:999px;padding:12px 18px;box-shadow:0 8px 24px rgba(0,0,0,.3)}.tab svg{transform:none}.tab:hover{padding-right:18px}
   .states{padding-bottom:84px}.st{min-height:96px}.traces{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
@@ -154,87 +155,124 @@ td,th{text-align:left;padding:9px 6px;border-bottom:1px solid var(--pline);verti
   <div id="eh"></div>
 
   <h3>How the engine decides</h3>
-  <p class="sub">Checked in order every 500 ms on a 3-sample moving average. A new state must win 2 cycles in a row.</p>
-  <table><thead><tr><th>State</th><th>Rule</th></tr></thead><tbody id="rules"></tbody></table>
+  <p class="sub" id="rulesNote"></p>
+  <table><thead><tr><th>#</th><th>State</th><th>Rule</th></tr></thead><tbody id="rules"></tbody></table>
   <p class="note">Demo of nishantchakravarthy/Adaptive-UI. Demo signals are scripted; "Your input" reads your real keys, clicks, pointer movement and scroll.</p>
 </aside>
 
+<script id="engine-rules" type="application/json">{"version":1,"order":["IDLE","FOCUS","READING","ERROR","ACTIVE","LIGHT"],"light_never_interrupts":["FOCUS","READING"],"window_seconds":1.5,"debounce_seconds":1.0,"click_hold_seconds":0.4,"typing_hold_seconds":0.6,"thresholds":{"idle_seconds":5.0,"focus_keys":2.0,"focus_move_max":50.0,"focus_scroll_max":2.0,"reading_scroll":0.3,"reading_keys_max":1.0,"reading_clicks_max":1.0,"reading_move_max":200.0,"error_keys":4.0,"error_clicks":3.0,"error_move":400.0,"active_clicks":3.0,"active_move":200.0,"active_scroll":1.0}}</script>
 <script>
 {
+/* Mirrors state_engine.py. Rules and timing come from the JSON block above,
+   which tools/export_rules.py fills from the Python engine (CI checks it). */
+const R = JSON.parse(document.getElementById("engine-rules").textContent);
+const T = R.thresholds;
 const S = {
-  ACTIVE:{field:"#0b4a3b",glow:"#1fa37a",acc:"#8ff2c9",dot:"#3ecf8e",name:"Active",d:"Heavy cursor and click activity. Buttons grow and shortcuts appear for fast navigation.",rule:"clicks > 3/s, or move > 200 px/s, or scroll > 1/s"},
-  FOCUS:{field:"#1a2786",glow:"#4a5cff",acc:"#c3ccff",dot:"#7b93ff",name:"Focus",d:"Steady typing with a still cursor. Side panels hide so the workspace gets the whole screen.",rule:"keys > 2/s, move < 50 px/s, scroll < 2/s"},
-  IDLE:{field:"#2b2840",glow:"#6a5f9e",acc:"#d8d2f2",dot:"#a99ee0",name:"Idle",d:"No input for more than five seconds. Controls dim and a pause overlay covers the screen.",rule:"idle time > 5 s"},
-  ERROR:{field:"#5e1620",glow:"#b8323f",acc:"#ffc2c6",dot:"#f2646a",name:"Error",d:"Input is there but matches no pattern, so the engine switches to assistance mode.",rule:"no rule above matched"},
+  ACTIVE:{field:"#0b4a3b",glow:"#1fa37a",acc:"#8ff2c9",dot:"#3ecf8e",name:"Active",d:"Heavy cursor and click activity. Buttons grow and shortcuts appear for fast navigation.",rule:`clicks > ${T.active_clicks}/s, or move > ${T.active_move} px/s, or scroll > ${T.active_scroll}/s`},
+  FOCUS:{field:"#1a2786",glow:"#4a5cff",acc:"#c3ccff",dot:"#7b93ff",name:"Focus",d:"Steady typing with a still cursor. Side panels hide so the workspace gets the whole screen.",rule:`keys > ${T.focus_keys}/s, move < ${T.focus_move_max} px/s, scroll < ${T.focus_scroll_max}/s`},
+  READING:{field:"#123a5c",glow:"#2f7fbf",acc:"#b9dcff",dot:"#5aa9ef",name:"Reading",d:"Scrolling with little typing or clicking. The layout stays calm and full width.",rule:`scroll > ${T.reading_scroll}/s, keys < ${T.reading_keys_max}/s, clicks < ${T.reading_clicks_max}/s, move < ${T.reading_move_max} px/s`},
+  LIGHT:{field:"#2a2d33",glow:"#565c68",acc:"#e1e5ec",dot:"#a3abb8",name:"Light activity",d:"Some input, but below every rule. Nothing to adapt yet.",rule:"anything else while active"},
+  IDLE:{field:"#2b2840",glow:"#6a5f9e",acc:"#d8d2f2",dot:"#a99ee0",name:"Idle",d:`No input for more than ${T.idle_seconds} seconds. Controls dim and a pause overlay covers the screen.`,rule:`idle time > ${T.idle_seconds} s`},
+  ERROR:{field:"#5e1620",glow:"#b8323f",acc:"#ffc2c6",dot:"#f2646a",name:"Error",d:"Heavy typing together with heavy mouse use. The engine switches to assistance mode.",rule:`keys > ${T.error_keys}/s with clicks > ${T.error_clicks}/s or move > ${T.error_move} px/s`},
   PAUSED:{field:"#26272b",glow:"#4b4e57",acc:"#d6d7da",dot:"#8d9099",name:"Paused",d:"Monitoring is paused. Nothing is captured until you resume.",rule:"set by you"}
 };
-const ORDER = ["ACTIVE","FOCUS","IDLE","ERROR"], RULE_ORDER = ["IDLE","FOCUS","ACTIVE","ERROR"];
+const ORDER = ["FOCUS","READING","ACTIVE","LIGHT","IDLE","ERROR"];
 const $ = id => document.getElementById(id);
 const rs = document.documentElement.style;
+const TICK = 100, N = 120; // engine every 100 ms; history every 500 ms for 60 s
 
 $("states").innerHTML = ORDER.map(k=>`<div class="st" id="st-${k}" style="--c:${S[k].dot}"><div class="n">${S[k].name}<i></i></div><div class="r">${S[k].rule}</div><div class="t" id="seen-${k}">Not seen yet</div></div>`).join("");
-$("rules").innerHTML = RULE_ORDER.map(k=>`<tr><td><span class="chip" style="--c:${S[k].dot}">${k}</span></td><td>${S[k].rule}</td></tr>`).join("");
+$("rules").innerHTML = R.order.map((k,i)=>`<tr><td>${i+1}</td><td><span class="chip" style="--c:${S[k].dot}">${k}</span></td><td>${S[k].rule}</td></tr>`).join("");
+$("rulesNote").textContent = `Checked in this order on a ${R.window_seconds} s average; the first match wins. A new state must keep winning for ${R.debounce_seconds} s. Light activity never interrupts Focus or Reading.`;
 $("stLegend").innerHTML = ORDER.map(k=>`<i class="s" style="background:${S[k].dot}"></i>${S[k].name}`).join(" ");
-const TR = [["keys","Keys","i-key","/s","FOCUS when > 2"],["clicks","Clicks","i-click","/s","ACTIVE when > 3"],["move","Movement","i-move","px/s","ACTIVE when > 200"],["scroll","Scroll","i-scroll","/s","ACTIVE when > 1"]];
+const TR = [["keys","Keys","i-key","/s",`FOCUS when > ${T.focus_keys}`],["clicks","Clicks","i-click","/s",`ACTIVE when > ${T.active_clicks}`],["move","Movement","i-move","px/s",`ACTIVE when > ${T.active_move}`],["scroll","Scroll","i-scroll","/s",`READING when > ${T.reading_scroll}`]];
 $("traces").innerHTML = TR.map(([k,n,ic,u,r])=>`<div class="tr"><div class="h"><svg class="i"><use href="#${ic}"/></svg>${n}</div><div class="v"><span id="v-${k}">0</span><small>${u}</small></div><div class="rule">${r}</div><canvas id="c-${k}"></canvas></div>`).join("");
 
-/* signals */
-const N = 120, hist = {keys:[],clicks:[],move:[],scroll:[],state:[]};
+/* ---------- input ---------- */
 let mode = "demo", paused = false, events = 0;
 const raw = {keys:0,clicks:0,move:0,scroll:0}; let lastInput = performance.now();
+let instantClick = false, instantTyping = false, keyTimes = [];
 const bump = (k,v=1)=>{ if(mode!=="live"||paused) return; raw[k]+=v; lastInput = performance.now(); events++; };
-addEventListener("keydown",()=>bump("keys"));
-addEventListener("pointerdown",()=>bump("clicks"));
+addEventListener("keydown",()=>{ bump("keys"); if(mode!=="live") return; const t=performance.now(); keyTimes=keyTimes.filter(x=>t-x<=300); keyTimes.push(t); if(keyTimes.length>=2) instantTyping=true; });
+addEventListener("pointerdown",()=>{ bump("clicks"); if(mode==="live") instantClick=true; });
 addEventListener("pointermove",e=>bump("move",Math.abs(e.movementX||0)+Math.abs(e.movementY||0)));
 addEventListener("wheel",()=>bump("scroll"),{passive:true});
 let ty=null; addEventListener("touchstart",e=>{ty=e.touches[0].clientY},{passive:true});
 addEventListener("touchmove",e=>{const y=e.touches[0].clientY; if(ty!==null&&Math.abs(y-ty)>30){bump("scroll");ty=y}},{passive:true});
 
-const SCRIPT = [["type",9],["browse",7],["hesitate",4],["type",6],["quiet",8],["browse",5]];
+/* scripted session: each behaviour lands on one state */
+const SCRIPT = [["type",8],["read",8],["browse",6],["conflict",5],["light",6],["quiet",8],["type",6],["read",5]];
 let sIdx=0, sT=0, demoIdle=0;
 const rnd=(a,b)=>a+Math.random()*(b-a);
-function demoSample(){
-  const [b,len]=SCRIPT[sIdx]; sT+=.5; if(sT>=len){sT=0;sIdx=(sIdx+1)%SCRIPT.length;}
+function demoSample(dt){
+  const [b,len]=SCRIPT[sIdx]; sT+=dt; if(sT>=len){sT=0;sIdx=(sIdx+1)%SCRIPT.length;}
   let s;
-  if(b==="type") s={keys:rnd(3,7),clicks:rnd(0,.4),move:rnd(0,35),scroll:0};
-  else if(b==="browse") s={keys:rnd(0,.6),clicks:rnd(2.5,6),move:rnd(250,900),scroll:rnd(0,3)};
-  else if(b==="hesitate") s={keys:rnd(.5,1.8),clicks:rnd(.5,1.5),move:rnd(60,150),scroll:0};
+  if(b==="type") s={keys:rnd(3.5,7),clicks:0,move:rnd(0,30),scroll:0};
+  else if(b==="read") s={keys:0,clicks:0,move:rnd(0,80),scroll:rnd(0.6,1.6)};
+  else if(b==="browse") s={keys:rnd(0,0.5),clicks:rnd(3.5,6),move:rnd(300,900),scroll:rnd(0,1)};
+  else if(b==="conflict") s={keys:rnd(5,8),clicks:rnd(0,2),move:rnd(500,900),scroll:0};
+  else if(b==="light") s={keys:rnd(0,0.8),clicks:rnd(0,0.6),move:rnd(10,120),scroll:0};
   else s={keys:0,clicks:0,move:0,scroll:0};
-  demoIdle=(s.keys+s.clicks+s.move+s.scroll)>0?0:demoIdle+.5;
+  demoIdle=(s.keys+s.clicks+s.move+s.scroll)>0?0:demoIdle+dt;
   return {...s,idle:demoIdle};
 }
-function liveSample(){ const s={keys:raw.keys*2,clicks:raw.clicks*2,move:raw.move*2,scroll:raw.scroll*2,idle:(performance.now()-lastInput)/1000}; raw.keys=raw.clicks=raw.move=raw.scroll=0; return s; }
-
-/* FSM, mirrors state_engine.py */
-const avg = {keys:[],clicks:[],move:[],scroll:[]};
-let state="FOCUS", cand=null, candN=0, since=performance.now(), log=[], conf=0, vNow=null;
-const seen = {};
-const clock = ()=> vNow ?? performance.now();
-const wall = t => new Date(Date.now()-(performance.now()-t));
-function classify(m){
-  if(m.idle>5) return "IDLE";
-  if(m.keys>2&&m.move<50&&m.scroll<2) return "FOCUS";
-  if(m.clicks>3||m.move>200||m.scroll>1) return "ACTIVE";
-  return "ERROR";
+function liveSample(dt){
+  const s={keys:raw.keys/dt,clicks:raw.clicks/dt,move:raw.move/dt,scroll:raw.scroll/dt,idle:(performance.now()-lastInput)/1000,click:instantClick,typing:instantTyping};
+  raw.keys=raw.clicks=raw.move=raw.scroll=0; instantClick=instantTyping=false; return s;
 }
-function confidence(st,m){ const c=x=>Math.max(0,Math.min(1,x));
-  if(st==="IDLE") return c(.6+(m.idle-5)/10);
-  if(st==="FOCUS") return c(.45+(m.keys-2)/8+(50-m.move)/200);
-  if(st==="ACTIVE") return c(.4+Math.max(m.clicks/10,m.move/1200,m.scroll/4));
-  return c(.25+Math.random()*.15); }
-const avgOf = k=>{const a=avg[k]; return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
-const fmt=(v,d)=>v.toFixed(d);
 
-function setState(next){
+/* ---------- engine (same rules and timing as state_engine.py) ---------- */
+const clip=(x,lo=0,hi=1)=>Math.max(lo,Math.min(hi,x));
+let samples=[], state="IDLE", since=0, cand="IDLE", candSince=0, holdActive=0, holdFocus=0, conf=0, avg={keys:0,clicks:0,move:0,scroll:0};
+let vNow=null; const clock=()=>vNow ?? performance.now()/1000;
+const wall=t=>new Date(Date.now()-(performance.now()/1000-t)*1000);
+let log=[]; const seen={};
+function average(now){
+  while(samples.length>1 && samples[0].t < now-R.window_seconds) samples.shift();
+  const tot=samples.reduce((a,s)=>a+s.dt,0)||1, out={};
+  for(const k of ["keys","clicks","move","scroll"]) out[k]=samples.reduce((a,s)=>a+s.dt*s[k],0)/tot;
+  return out;
+}
+function classify(a,idle){
+  if(idle>T.idle_seconds) return "IDLE";
+  if(a.keys>T.focus_keys && a.move<T.focus_move_max && a.scroll<T.focus_scroll_max) return "FOCUS";
+  if(a.scroll>T.reading_scroll && a.keys<T.reading_keys_max && a.clicks<T.reading_clicks_max && a.move<T.reading_move_max) return "READING";
+  if(a.keys>T.error_keys && (a.clicks>T.error_clicks || a.move>T.error_move)) return "ERROR";
+  if(a.clicks>T.active_clicks || a.move>T.active_move || a.scroll>T.active_scroll) return "ACTIVE";
+  return "LIGHT";
+}
+function confidence(st,a,idle){
+  if(st==="IDLE") return clip(0.6+(idle-T.idle_seconds)/10);
+  if(st==="FOCUS") return clip(0.5+0.25*clip((a.keys-T.focus_keys)/T.focus_keys)+0.25*clip(1-a.move/T.focus_move_max));
+  if(st==="READING") return clip(0.5+0.5*clip((a.scroll-T.reading_scroll)/(T.reading_scroll*3)));
+  if(st==="ACTIVE") return clip(0.5+0.5*clip(Math.max(a.clicks/T.active_clicks,a.move/T.active_move,a.scroll/T.active_scroll)-1));
+  return st==="ERROR"?0.4:0.3;
+}
+function commit(next,now){
   if(next===state) return;
-  const held=((clock()-since)/1000).toFixed(1);
-  log.unshift({t:wall(clock()).toTimeString().slice(0,8),a:state,b:next,h:held}); log=log.slice(0,60);
+  const held=(now-since).toFixed(1);
+  log.unshift({t:wall(now).toTimeString().slice(0,8),a:state,b:next,h:held}); log=log.slice(0,60);
   $("log").innerHTML = log.map(l=>`<li><time>${l.t}</time><span class="chip" style="--c:${S[l.a].dot}">${l.a}</span><span class="chip" style="--c:${S[l.b].dot}">${l.b}</span><span class="d">${l.h} s</span></li>`).join("");
   $("logCount").textContent = log.length+(log.length===1?" transition":" transitions");
   $("kTrans").textContent = log.length;
-  seen[state] = clock();
-  state=next; since=clock(); if(vNow===null) paint(true);
+  seen[state]=now; state=next; since=now; if(vNow===null) paint(true);
 }
+function step(s,dt,now){
+  samples.push({t:now,dt,keys:s.keys,clicks:s.clicks,move:s.move,scroll:s.scroll});
+  avg=average(now);
+  if(s.click){ holdActive=now+R.click_hold_seconds; cand="ACTIVE"; candSince=now; commit("ACTIVE",now); conf=confidence("ACTIVE",avg,s.idle); return; }
+  if(s.typing && now>=holdActive && avg.move<T.focus_move_max && s.clicks<=0){ holdFocus=now+R.typing_hold_seconds; cand="FOCUS"; candSince=now; commit("FOCUS",now); conf=confidence("FOCUS",avg,s.idle); return; }
+  let r=classify(avg,s.idle);
+  if(r==="LIGHT" && R.light_never_interrupts.includes(state)) r=state;
+  if(r!==cand){ cand=r; candSince=now; }
+  let next=state;
+  if(r!==state && now-candSince>=R.debounce_seconds) next=r;
+  if(state==="ACTIVE" && now<holdActive) next="ACTIVE";
+  if(state==="FOCUS" && now<holdFocus) next="FOCUS";
+  commit(next,now); conf=confidence(state,avg,s.idle);
+}
+
+/* ---------- view ---------- */
 function paint(animate){
   const t=S[state];
   rs.setProperty("--field",t.field); rs.setProperty("--glow",t.glow); rs.setProperty("--acc",t.acc);
@@ -243,12 +281,10 @@ function paint(animate){
   $("desc").textContent=t.d;
   ORDER.forEach(k=>$("st-"+k).classList.toggle("on",k===state));
 }
-function seenText(){
-  const now=clock();
-  ORDER.forEach(k=>{ $("seen-"+k).textContent = k===state ? "Now" : seen[k]!==undefined ? `Last seen ${Math.round((now-seen[k])/1000)} s ago` : "Not seen yet"; });
+function seenText(now){
+  ORDER.forEach(k=>{ $("seen-"+k).textContent = k===state ? "Now" : seen[k]!==undefined ? `Last seen ${Math.round(now-seen[k])} s ago` : "Not seen yet"; });
 }
-
-/* drawer charts */
+const hist={keys:[],clicks:[],move:[],scroll:[],state:[]};
 function sizeCanvas(c){ const r=c.getBoundingClientRect(), d=devicePixelRatio||1; if(c.width!==Math.round(r.width*d)||c.height!==Math.round(r.height*d)){c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);} const x=c.getContext("2d"); x.setTransform(d,0,0,d,0,0); return [x,r.width,r.height]; }
 function spark(k){
   const [x,W,H]=sizeCanvas($("c-"+k)), a=hist[k]; x.clearRect(0,0,W,H); if(a.length<2) return;
@@ -262,14 +298,14 @@ function timeline(){
   const [x,W,H]=sizeCanvas($("tl")); x.clearRect(0,0,W,H);
   const top=6, band=12, bot=H-band-22, L=W<420?4:28, max=Math.max(8,...hist.keys,...hist.clicks);
   x.font="12px Inter Tight, sans-serif"; x.fillStyle="#6c7078"; x.strokeStyle="#22242a"; x.lineWidth=1;
-  for(let i=0;i<=4;i++){const y=top+(bot-top)*i/4; x.beginPath(); x.moveTo(L,y); x.lineTo(W,y); x.stroke(); if(W>=420) x.fillText(fmt(max*(1-i/4),0),0,y+4);}
+  for(let i=0;i<=4;i++){const y=top+(bot-top)*i/4; x.beginPath(); x.moveTo(L,y); x.lineTo(W,y); x.stroke(); if(W>=420) x.fillText((max*(1-i/4)).toFixed(0),0,y+4);}
   const xs=i=>L+(W-L)*(i+N-hist.keys.length)/(N-1);
   const line=(arr,col,dash)=>{ if(arr.length<2) return; x.beginPath(); arr.forEach((v,i)=>{const p=xs(i),q=bot-(bot-top)*v/max; i?x.lineTo(p,q):x.moveTo(p,q);}); x.setLineDash(dash); x.strokeStyle=col; x.lineWidth=1.8; x.stroke(); x.setLineDash([]); };
   line(hist.keys,"#ededee",[]); line(hist.clicks,"#8d929b",[5,4]);
   const bw=(W-L)/(N-1); hist.state.forEach((s,i)=>{x.fillStyle=S[s].dot; x.fillRect(xs(i)-bw/2,H-band-12,bw+.5,band);});
   x.fillStyle="#6c7078"; x.fillText("60 s ago",L,H-1); const nw=x.measureText("now").width; x.fillText("now",W-nw,H-1);
 }
-let frames=[], lastF=performance.now(), lastTick=performance.now(), jitter=0, evRate=0;
+let frames=[], lastF=performance.now(), lastTick=performance.now(), jitter=0, evRate=0, evWindow=0;
 (function fr(now){ frames.push(now-lastF); lastF=now; if(frames.length>60) frames.shift(); requestAnimationFrame(fr); })(lastF);
 function health(){
   const ft=frames.reduce((a,b)=>a+b,0)/Math.max(1,frames.length);
@@ -279,40 +315,41 @@ function health(){
 const isOpen=()=>document.body.classList.contains("open");
 function drawStats(){ TR.forEach(([k])=>spark(k)); timeline(); health(); }
 
-/* loop, 500 ms like main.py */
+/* ---------- loop ---------- */
+let ticks=0;
 function tick(){
-  const now=clock(); if(vNow===null){ jitter=Math.abs(now-lastTick-500); lastTick=now; evRate=events*2; events=0; }
-  if(paused){ if(state!=="PAUSED") setState("PAUSED"); }
+  const now=clock(), dt=TICK/1000;
+  if(vNow===null){ const p=performance.now(); jitter=Math.abs(p-lastTick-TICK); lastTick=p; evWindow+=dt; if(evWindow>=1){ evRate=events; events=0; evWindow=0; } }
+  if(paused){ if(state!=="PAUSED") commit("PAUSED",now); }
   else {
-    const s=mode==="demo"?demoSample():liveSample();
-    for(const k of ["keys","clicks","move","scroll"]){ avg[k].push(s[k]); if(avg[k].length>3) avg[k].shift(); }
-    const m={keys:avgOf("keys"),clicks:avgOf("clicks"),move:avgOf("move"),scroll:avgOf("scroll"),idle:s.idle};
-    const c=classify(m); if(c===cand) candN++; else {cand=c;candN=1;}
-    if(candN>=2) setState(c);
-    conf=confidence(state,m);
-    for(const k of ["keys","clicks","move","scroll"]){ hist[k].push(m[k]); if(hist[k].length>N) hist[k].shift(); }
-    $("v-keys").textContent=fmt(m.keys,1); $("v-clicks").textContent=fmt(m.clicks,1); $("v-move").textContent=fmt(m.move,0); $("v-scroll").textContent=fmt(m.scroll,1);
+    if(state==="PAUSED"){ cand="PAUSED"; }
+    step(mode==="demo"?demoSample(dt):liveSample(dt), dt, now);
   }
-  hist.state.push(state); if(hist.state.length>N) hist.state.shift();
+  if(++ticks%5===0){
+    hist.keys.push(avg.keys); hist.clicks.push(avg.clicks); hist.move.push(avg.move); hist.scroll.push(avg.scroll); hist.state.push(state);
+    for(const k in hist) if(hist[k].length>N) hist[k].shift();
+  }
   if(vNow!==null) return;
-  $("kTime").textContent=fmt((now-since)/1000,1)+" s"; $("kConf").textContent=fmt(conf,2);
-  seenText(); if(isOpen()) drawStats();
+  $("v-keys").textContent=avg.keys.toFixed(1); $("v-clicks").textContent=avg.clicks.toFixed(1); $("v-move").textContent=avg.move.toFixed(0); $("v-scroll").textContent=avg.scroll.toFixed(1);
+  $("kTime").textContent=(now-since).toFixed(1)+" s"; $("kConf").textContent=conf.toFixed(2);
+  seenText(now); if(isOpen() && ticks%5===0) drawStats();
 }
 
-/* controls */
+/* ---------- controls ---------- */
 function setMode(m){ mode=m; $("mDemo").setAttribute("aria-pressed",m==="demo"); $("mLive").setAttribute("aria-pressed",m==="live");
   $("srcNote").textContent = m==="demo" ? "Current state · scripted demo session" : "Current state · reading your keys, clicks and scroll";
   lastInput=performance.now(); demoIdle=0; sIdx=0; sT=0; }
 $("mDemo").onclick=()=>setMode("demo"); $("mLive").onclick=()=>setMode("live");
-$("pause").onclick=()=>{ paused=!paused; $("pause").innerHTML=paused?'<svg class="i"><use href="#i-play"/></svg><span>Resume</span>':'<svg class="i"><use href="#i-pause"/></svg><span>Pause</span>'; if(!paused){lastInput=performance.now();cand=null;} };
+$("pause").onclick=()=>{ paused=!paused; $("pause").innerHTML=paused?'<svg class="i"><use href="#i-play"/></svg><span>Resume</span>':'<svg class="i"><use href="#i-pause"/></svg><span>Pause</span>'; if(!paused){lastInput=performance.now(); demoIdle=0;} };
 function openStats(o){ document.body.classList.toggle("open",o); $("openStats").setAttribute("aria-expanded",o); if(o){ drawStats(); $("closeStats").focus(); } else $("openStats").focus(); }
 $("openStats").onclick=()=>openStats(true); $("closeStats").onclick=()=>openStats(false); $("scrim").onclick=()=>openStats(false);
 addEventListener("keydown",e=>{ if(e.key==="Escape"&&isOpen()) openStats(false); });
 const ro=new ResizeObserver(()=>{ if(isOpen()) drawStats(); }); ro.observe($("drawer"));
 
-/* prefill 60 s of history so stats open with data */
-{ const t0=performance.now(); for(let i=N;i>0;i--){ vNow=t0-i*500; tick(); } vNow=null; }
-paint(false); tick(); setInterval(tick,500);
+/* prefill 60 s of history so the drawer opens with data */
+{ const t0=performance.now()/1000; vNow=t0-60; since=vNow; candSince=vNow; for(let i=0;i<600;i++){ vNow+=TICK/1000; tick(); } vNow=null; }
+paint(false); tick(); setInterval(tick,TICK);
+window.__engine={classify,step,get state(){return state}}; // used by the browser test
 }
 </script>
 </body>
