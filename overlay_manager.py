@@ -229,7 +229,7 @@ class OverlayController:
 
         ctk.CTkLabel(
             inner,
-            text="⚠️  ERROR ASSISTANCE MODE  —  Low confidence input detected",
+            text="⚠️  ERROR ASSISTANCE MODE  —  Conflicting input detected",
             font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
             text_color="#ff8a80",
         ).pack(expand=True)

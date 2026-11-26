@@ -3,6 +3,7 @@ system_bridge.py — System-Level Adaptive Bridge
 Applies system-level changes based on FSM state:
   - Brightness control (with fallback to overlay dimming)
   - Desktop notifications with throttling (5s cooldown)
+  - Foreground-app lookup for the state engine's confidence bias
 """
 
 import threading
@@ -11,6 +12,7 @@ import logging
 import ctypes
 import json
 import os
+import sys
 
 logger = logging.getLogger("AdaptiveUI.Bridge")
 
@@ -161,8 +163,57 @@ def apply_system_effects(state, state_duration=0.0):
         notify("⚡ Active Mode", "UI optimized for rapid interaction")
     elif state == "ERROR":
         set_brightness(70)
-        notify("⚠️ Error Assistance", "Low confidence input — assistance enabled")
+        notify("⚠️ Error Assistance", "Conflicting input — assistance enabled")
+    elif state == "READING":
+        set_brightness(90)
+    elif state == "LIGHT":
+        set_brightness(100)
 
 
 def reset_brightness():
     set_brightness(100)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOREGROUND APP (Windows; other platforms arrive with the Phase 7 platform layer)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+def get_foreground_app():
+    """
+    Return the lower-case executable name of the foreground window's process,
+    for example "code.exe", or None if it cannot be determined.
+    Uses only ctypes (user32 + kernel32), so no pywin32 dependency.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if not pid.value:
+            return None
+
+        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if not handle:
+            return None
+        try:
+            size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+                return None
+            return os.path.basename(buf.value).lower() or None
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        logger.debug("Foreground app lookup failed", exc_info=True)
+        return None
+

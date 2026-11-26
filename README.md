@@ -4,15 +4,23 @@ The Adaptive UI Engine is a real-time background assistant that transforms the s
 
 # 🧠 Core Engineering Concepts
 1. Finite State Machine (FSM) Logic
-The system classifies user behavior into four distinct states based on interaction intensity:
+The system classifies user behavior into six detected states, checked in this order on a 1.5 s moving average (the first match wins):
 
-ACTIVE (Cyan): High-intensity navigation; triggers telemetry widgets and live stats.
+IDLE (Dark): more than 5 seconds of total inactivity; triggers "System Paused" overlay and energy-saving brightness.
 
-FOCUS (Purple): Sustained typing with low cursor movement; enters "Deep Work" mode with minimal distractions.
+FOCUS (Purple): sustained typing with low cursor movement; enters "Deep Work" mode with minimal distractions.
 
-IDLE (Dark): 5 seconds of total inactivity; triggers "System Paused" overlay and energy-saving brightness.
+READING (Blue): scrolling with little typing, clicking or movement; calm full-width layout.
 
-ERROR (Red): Ambiguous or conflicting behavioral signals; triggers fallback assistance mode.
+ERROR (Red): conflicting signals, such as heavy typing together with heavy mouse use; triggers assistance mode.
+
+ACTIVE (Cyan): high-intensity navigation (clicks, fast movement or fast scrolling); triggers telemetry widgets and live stats.
+
+LIGHT (Grey): some input that matches none of the above; no adaptation.
+
+PAUSED is set from the tray and is never detected. A new state takes over only after winning for 1 second; pauses while reading or thinking keep FOCUS or READING instead of dropping to LIGHT. Confidence shows how far past its thresholds the input is, nudged by the foreground app (editors lean towards FOCUS, browsers towards READING).
+
+On first launch the engine calibrates for two minutes while you work normally, then saves your thresholds to `config.json` (`%APPDATA%/AdaptiveUI` on Windows). Run `python main.py --recalibrate` to repeat it.
 
 2. Global Event Interception
 Unlike standard apps, this engine operates at the OS level using an Input Abstraction Layer. Using pynput and multi-threaded listeners, it captures:
@@ -64,6 +72,11 @@ pip install pynput customtkinter screeninfo Pillow
 **Run the Engine:**
 
 python main.py
+
+**Run the Tests:**
+
+pip install pytest
+python -m pytest
 # 👥 Authors
 **Nishant Chakravarthy** - System Architecture & FSM Design
 
