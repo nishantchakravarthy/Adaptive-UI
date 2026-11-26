@@ -26,8 +26,6 @@ Production Fixes:
 """
 
 from pynput import mouse, keyboard
-import ctypes
-import ctypes.wintypes
 import time
 import math
 import logging
@@ -41,8 +39,8 @@ _POLL_INTERVAL = 0.016  # 16ms
 # Dead zone threshold — ignore tiny jitter below this pixel distance
 _MOVE_DEAD_ZONE = 3
 
-# Win32 API
-_user32 = ctypes.windll.user32
+# Cursor position comes from the OS layer (Win32 GetCursorPos, AppKit, or X11)
+import oslayer
 
 
 class EventCapture:
@@ -91,12 +89,13 @@ class EventCapture:
         Poll cursor position at ~60Hz using Win32 GetCursorPos.
         This is the most reliable way to detect cursor movement on Windows.
         """
-        pt = ctypes.wintypes.POINT()
-
         while self._poll_running:
             try:
-                _user32.GetCursorPos(ctypes.byref(pt))
-                x, y = pt.x, pt.y
+                pos = oslayer.get_cursor_pos()
+                if pos is None:
+                    time.sleep(_POLL_INTERVAL)
+                    continue
+                x, y = pos
 
                 with self.lock:
                     if self._last_x is not None and self._last_y is not None:
@@ -183,7 +182,7 @@ class EventCapture:
         self._poll_running = True
         self._poll_thread = Thread(target=self._poll_cursor, daemon=True)
         self._poll_thread.start()
-        logger.info("Cursor polling started (GetCursorPos @ ~60Hz).")
+        logger.info("Cursor polling started (%s @ ~60Hz).", oslayer.NAME)
 
     def stop(self):
         """Gracefully stop all listeners."""

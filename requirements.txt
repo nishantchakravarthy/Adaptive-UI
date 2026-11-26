@@ -1,8 +1,14 @@
-customtkinter>=5.2.0
-pynput>=1.7.6
-pystray>=0.19.5
-Pillow>=10.0.0
-screen_brightness_control>=0.22.0
-plyer>=2.1.0
-screeninfo>=0.8.1
-pyinstaller>=6.0.0
+# Runtime dependencies. Upper bounds stop a new major version from breaking the
+# app (customtkinter 6.0 changed its API; this code targets 5.x). After testing
+# on a real machine, replace with exact pins from `pip freeze`.
+customtkinter>=5.2.0,<6
+pynput>=1.7.6,<2
+pystray>=0.19.5,<0.20
+Pillow>=10.0.0,<14
+screen_brightness_control>=0.22.0,<1
+plyer>=2.1.0,<3
+screeninfo>=0.8.1,<0.9
+psutil>=5.9,<8
+pywinstyles>=1.8,<2 ; sys_platform == "win32"
+pyobjc-framework-Cocoa>=10.0 ; sys_platform == "darwin"
+python-xlib>=0.33,<0.34 ; sys_platform == "linux"

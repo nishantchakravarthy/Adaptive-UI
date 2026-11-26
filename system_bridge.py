@@ -3,6 +3,7 @@ system_bridge.py — System-Level Adaptive Bridge
 Applies system-level changes based on FSM state:
   - Brightness control (with fallback to overlay dimming)
   - Desktop notifications with throttling (5s cooldown)
+  - Foreground-app lookup for the state engine's confidence bias
 """
 
 import threading
@@ -11,6 +12,7 @@ import logging
 import ctypes
 import json
 import os
+import sys
 
 logger = logging.getLogger("AdaptiveUI.Bridge")
 
@@ -35,6 +37,9 @@ RUNTIME_STATE_FILE = "runtime_state.json"
 def _init_mouse_safety():
     """Capture original speed and recover from past crashes."""
     global _original_mouse_speed
+    if sys.platform != "win32":
+        _original_mouse_speed = None  # mouse-speed effects are Windows-only
+        return
     try:
         # Check for crash recovery
         if os.path.exists(RUNTIME_STATE_FILE):
@@ -161,8 +166,23 @@ def apply_system_effects(state, state_duration=0.0):
         notify("⚡ Active Mode", "UI optimized for rapid interaction")
     elif state == "ERROR":
         set_brightness(70)
-        notify("⚠️ Error Assistance", "Low confidence input — assistance enabled")
+        notify("⚠️ Error Assistance", "Conflicting input — assistance enabled")
+    elif state == "READING":
+        set_brightness(90)
+    elif state == "LIGHT":
+        set_brightness(100)
 
 
 def reset_brightness():
     set_brightness(100)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FOREGROUND APP (delegates to the OS layer: Windows, macOS or Linux X11)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def get_foreground_app():
+    """Lower-case process name of the foreground app, or None."""
+    import oslayer
+    return oslayer.get_foreground_app()

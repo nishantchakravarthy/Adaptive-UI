@@ -1,0 +1,5 @@
+# Test and build tools (CI installs only these for tests; the GUI stack is stubbed)
+pytest>=8,<10
+ruff>=0.6
+Pillow>=10.0.0,<14
+pyinstaller>=6.0.0,<7

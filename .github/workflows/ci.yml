@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install test tools
+        run: python -m pip install pytest ruff "Pillow>=10,<14"
+      - name: Lint (syntax errors, undefined names, unused imports)
+        run: ruff check --select E9,F .
+      - name: Rules are in sync with the engine
+        if: runner.os == 'Linux'   # byte comparison; Windows checkouts use CRLF
+        run: |
+          python tools/export_rules.py
+          git diff --exit-code rules.json web/index.html
+      - name: Tests
+        run: python -m pytest -q

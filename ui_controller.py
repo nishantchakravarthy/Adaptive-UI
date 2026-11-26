@@ -9,7 +9,6 @@ Production Fixes:
 """
 
 import customtkinter as ctk
-import time
 import logging
 
 logger = logging.getLogger("AdaptiveUI.Dashboard")
@@ -72,7 +71,35 @@ STATE_THEMES = {
         "state_glow": "#ff8a80",
         "button_fg": "#ffffff",
         "label": "⚠️ ERROR",
-        "description": "Ambiguous input — Error Assistance Mode active",
+        "description": "Conflicting input (heavy typing with heavy mouse use) — Error Assistance Mode active",
+    },
+    "READING": {
+        "bg": "#0b1226",
+        "accent": "#5c7cfa",
+        "accent_hover": "#4c6ef5",
+        "text": "#dbe4ff",
+        "panel_bg": "#111a33",
+        "panel_border": "#5c7cfa",
+        "header_bg": "#111a33",
+        "state_color": "#5c7cfa",
+        "state_glow": "#91a7ff",
+        "button_fg": "#ffffff",
+        "label": "📖 READING",
+        "description": "Scrolling with little typing — layout kept calm for reading",
+    },
+    "LIGHT": {
+        "bg": "#14161a",
+        "accent": "#8d99ae",
+        "accent_hover": "#a3aec2",
+        "text": "#e1e5ec",
+        "panel_bg": "#1b1e24",
+        "panel_border": "#3a4150",
+        "header_bg": "#1b1e24",
+        "state_color": "#8d99ae",
+        "state_glow": "#c5cdd9",
+        "button_fg": "#000000",
+        "label": "🌤 LIGHT",
+        "description": "Some input below every activity rule — nothing to adapt yet",
     },
     "PAUSED": {
         "bg": "#121212",
@@ -649,6 +676,19 @@ class AdaptiveUI:
                     text_color=theme["button_fg"],
                 )
             self.workspace_header.configure(text="⚠️ Error Assistance Mode")
+
+        elif state == "READING":
+            # Calm, full-width reading area
+            self.left_panel.grid_remove()
+            self.right_panel.grid_remove()
+            self.main_frame.grid_columnconfigure(0, weight=0)
+            self.main_frame.grid_columnconfigure(2, weight=0)
+            self.main_frame.grid_columnconfigure(1, weight=1)
+            self.workspace_header.configure(text="📖 Reading Mode")
+
+        elif state == "LIGHT":
+            # No adaptation; default layout with the neutral theme
+            self.workspace_header.configure(text="🌤 Light Activity")
 
         elif state == "PAUSED":
             # Grey-tinted inputs, dim buttons, disabled look
