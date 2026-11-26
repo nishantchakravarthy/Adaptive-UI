@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive UI Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm, almost ambient. The screen tells you one thing: what mode you are in.
+   IDEA: room lighting that follows your behaviour. The whole page is a coloured light field that shifts per state.
+   PICTURE: the state name set huge in italic serif on its own colour field, with the four states as a row of switches beneath.
+   COLOUR and TYPE: deep emerald, cobalt, dusk violet, oxblood fields with warm white text and film grain; Instrument Serif italic + Inter Tight.
+   LAYOUT: one quiet first screen; everything numeric lives in a Statistics drawer on the right. */
+:root{color-scheme:dark;--field:#1b2a8f;--glow:#4f63ff;--acc:#c3ccff;--ink:#f5f3ef;--mute:rgba(245,243,239,.68);--dim:rgba(245,243,239,.48);
+  --hair:rgba(245,243,239,.16);--sans:"Inter Tight",system-ui,sans-serif;--serif:"Instrument Serif",Georgia,serif;
+  --panel:#141518;--pline:#25272c;--pmute:#9a9da4;--pdim:#6c7078}
+:root[data-theme=light],:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;min-height:100svh;background:var(--field);color:var(--ink);font:16px/1.5 var(--sans);font-feature-settings:"tnum" 1;overflow-x:clip;-webkit-font-smoothing:antialiased;transition:background-color 1.2s ease}
+.light{position:fixed;inset:-20%;pointer-events:none;z-index:0;background:radial-gradient(40% 45% at 30% 35%,var(--glow),transparent 70%),radial-gradient(35% 40% at 75% 70%,color-mix(in srgb,var(--glow) 55%,transparent),transparent 70%);opacity:.55;transition:background 1.2s;animation:drift 26s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(6%,-4%) scale(1.08)}}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.18;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.vign{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.35))}
+main{position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:0 max(4vw,18px);min-height:100svh;display:flex;flex-direction:column}
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* top */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:22px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.brand .mark{width:30px;height:30px;border-radius:50%;border:1px solid var(--hair);display:grid;place-items:center}
+.ctrls{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:flex;border:1px solid var(--hair);border-radius:999px;padding:3px}
+.seg button,.btn{font:500 14px var(--sans);color:var(--mute);background:none;border:0;border-radius:999px;padding:0 16px;min-height:38px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .3s,color .3s}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--field)}
+.btn{border:1px solid var(--hair);color:var(--ink)}
+.btn:hover,.seg button:hover{color:var(--ink)}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+/* stage */
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;padding:4vh 0 3vh}
+.k{font-size:14px;color:var(--mute);display:flex;align-items:center;gap:10px}
+.k::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 25%,transparent);animation:beat 1.6s ease-in-out infinite}
+@keyframes beat{50%{box-shadow:0 0 0 8px transparent}}
+h1{font:italic 400 clamp(84px,16vw,200px)/.92 var(--serif);margin:10px 0 18px;letter-spacing:-.02em;transition:opacity .35s,transform .35s}
+h1.swap{opacity:0;transform:translateY(12px)}
+.desc{font-size:clamp(17px,1.8vw,20px);color:var(--mute);max-width:46ch;margin:0}
+.facts{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:22px;font-size:15px;color:var(--mute)}
+.facts b{color:var(--ink);font-weight:600;margin-right:6px}
+/* state switches */
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 0 32px}
+.st{border:1px solid var(--hair);border-radius:16px;padding:16px 18px;min-height:112px;display:flex;flex-direction:column;gap:4px;transition:background .6s,color .6s,border-color .6s}
+.st .n{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:17px}
+.st .n i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+.st .r{font-size:13px;color:var(--dim)}
+.st .t{margin-top:auto;font-size:13px;color:var(--mute)}
+.st.on{background:var(--ink);color:var(--field);border-color:var(--ink)}
+.st.on .r,.st.on .t{color:color-mix(in srgb,var(--field) 70%,transparent)}
+/* side tab */
+.tab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:5;writing-mode:vertical-rl;background:var(--ink);color:var(--field);border:0;border-radius:12px 0 0 12px;padding:18px 11px;font:600 14px var(--sans);letter-spacing:.02em;cursor:pointer;display:flex;align-items:center;gap:10px;transition:padding .2s,background-color 1.2s,color 1.2s}
+.tab:hover{padding-right:15px}
+.tab svg{transform:rotate(90deg)}
+/* drawer */
+.scrim{position:fixed;inset:0;z-index:8;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .3s}
+.drawer{position:fixed;top:0;right:0;bottom:0;z-index:9;width:min(600px,100vw);background:var(--panel);color:#ededee;border-left:1px solid var(--pline);transform:translateX(100%);transition:transform .45s cubic-bezier(.2,.8,.2,1);overflow-y:auto;padding:0 22px 40px;visibility:hidden}
+body.open .drawer{transform:none;visibility:visible}body.open .scrim{opacity:1;pointer-events:auto}
+.dh{position:sticky;top:0;background:var(--panel);display:flex;align-items:center;justify-content:space-between;padding:18px 0 14px;border-bottom:1px solid var(--pline);z-index:1}
+.dh h2{margin:0;font-size:18px;font-weight:600}
+.x{width:40px;height:40px;border-radius:10px;border:1px solid var(--pline);background:none;color:#ededee;cursor:pointer;display:grid;place-items:center}
+.drawer h3{font-size:14px;font-weight:600;margin:24px 0 4px}
+.drawer .sub{font-size:13px;color:var(--pmute);margin:0 0 10px}
+.traces{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.tr{border:1px solid var(--pline);border-radius:12px;padding:12px 14px 8px}
+.tr .h{display:flex;align-items:center;gap:8px;color:var(--pmute);font-size:13px}
+.tr .v{font-size:24px;font-weight:600;margin:4px 0 0;white-space:nowrap}
+.tr .v small{font-size:12px;color:var(--pmute);font-weight:400;margin-left:4px}
+.tr .rule{font-size:12px;color:var(--pdim)}
+.tr canvas{width:100%;height:40px;display:block;margin-top:6px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--pmute);flex-wrap:wrap;align-items:center}
+.legend i{display:inline-block;width:14px;height:2px;margin-right:6px;vertical-align:3px;background:#ededee}
+.legend i.c{background:none;border-top:2px dashed #8d929b}
+.legend i.s{height:8px;width:8px;border-radius:2px;vertical-align:0}
+.fig{position:relative;height:200px;margin-top:10px}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%}
+.kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--pline);font-size:14px}
+.kv span{color:var(--pmute)}.kv b{font-weight:600;white-space:nowrap}
+ol.log{list-style:none;margin:0;padding:0;max-height:260px;overflow:auto}
+ol.log li{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--pline);font-size:13px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:6px;background:#1e2024;font-weight:600;font-size:11.5px;justify-self:start}
+.chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--c)}
+ol.log time,ol.log .d{color:var(--pdim);white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:9px 6px;border-bottom:1px solid var(--pline);vertical-align:top}th{color:var(--pmute);font-weight:500}
+.note{font-size:12px;color:var(--pdim);margin-top:8px}
+@media(max-width:860px){.states{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.ctrls{margin-left:0;width:100%}.seg{flex:1}.seg button{flex:1;justify-content:center;padding:0 10px;white-space:nowrap}
+  .tab{top:auto;bottom:18px;right:18px;transform:none;writing-mode:horizontal-tb;border-radius:999px;padding:12px 18px;box-shadow:0 8px 24px rgba(0,0,0,.3)}.tab svg{transform:none}.tab:hover{padding-right:18px}
+  .states{padding-bottom:84px}.st{min-height:96px}.traces{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="light" aria-hidden="true"></div><div class="grain" aria-hidden="true"></div><div class="vign" aria-hidden="true"></div>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-key" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-click" viewBox="0 0 24 24"><path d="M9 9l5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6.2M6.2 12l-2.1 2"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></symbol>
+  <symbol id="i-scroll" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 6v4"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+</svg>
+
+<main>
+  <header class="bar">
+    <div class="brand"><span class="mark"><svg class="i"><use href="#i-pulse"/></svg></span>Adaptive UI Engine</div>
+    <div class="ctrls">
+      <div class="seg" role="group" aria-label="Signal source">
+        <button id="mDemo" aria-pressed="true">Demo signals</button>
+        <button id="mLive" aria-pressed="false">Your input</button>
+      </div>
+      <button class="btn" id="pause"><svg class="i"><use href="#i-pause"/></svg><span>Pause</span></button>
+    </div>
+  </header>
+
+  <section class="stage" aria-live="polite">
+    <div class="k" id="srcNote">Current state · scripted demo session</div>
+    <h1 id="title">Focus</h1>
+    <p class="desc" id="desc"></p>
+    <div class="facts"><span><b id="kTime">0.0 s</b>in this state</span><span><b id="kConf">0.00</b>confidence</span><span><b id="kTrans">0</b>transitions</span></div>
+  </section>
+
+  <section class="states" id="states" aria-label="All states"></section>
+</main>
+
+<button class="tab" id="openStats" aria-controls="drawer" aria-expanded="false"><svg class="i"><use href="#i-chart"/></svg>Statistics</button>
+<div class="scrim" id="scrim"></div>
+
+<aside class="drawer" id="drawer" aria-label="Statistics" role="dialog" aria-modal="true">
+  <div class="dh"><h2>Statistics</h2><button class="x" id="closeStats" aria-label="Close statistics"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="traces" id="traces"></div>
+
+  <h3>Input intensity, last 60 seconds</h3>
+  <div class="legend"><span><i></i>Keys / s</span><span><i class="c"></i>Clicks / s</span><span id="stLegend"></span></div>
+  <div class="fig"><canvas id="tl"></canvas></div>
+
+  <h3>Transition log</h3>
+  <p class="sub" id="logCount">0 transitions</p>
+  <ol class="log" id="log"></ol>
+
+  <h3>Engine health</h3>
+  <p class="sub">Measured live in this browser, not simulated.</p>
+  <div id="eh"></div>
+
+  <h3>How the engine decides</h3>
+  <p class="sub">Checked in order every 500 ms on a 3-sample moving average. A new state must win 2 cycles in a row.</p>
+  <table><thead><tr><th>State</th><th>Rule</th></tr></thead><tbody id="rules"></tbody></table>
+  <p class="note">Demo of nishantchakravarthy/Adaptive-UI. Demo signals are scripted; "Your input" reads your real keys, clicks, pointer movement and scroll.</p>
+</aside>
+
+<script>
+{
+const S = {
+  ACTIVE:{field:"#0b4a3b",glow:"#1fa37a",acc:"#8ff2c9",dot:"#3ecf8e",name:"Active",d:"Heavy cursor and click activity. Buttons grow and shortcuts appear for fast navigation.",rule:"clicks > 3/s, or move > 200 px/s, or scroll > 1/s"},
+  FOCUS:{field:"#1a2786",glow:"#4a5cff",acc:"#c3ccff",dot:"#7b93ff",name:"Focus",d:"Steady typing with a still cursor. Side panels hide so the workspace gets the whole screen.",rule:"keys > 2/s, move < 50 px/s, scroll < 2/s"},
+  IDLE:{field:"#2b2840",glow:"#6a5f9e",acc:"#d8d2f2",dot:"#a99ee0",name:"Idle",d:"No input for more than five seconds. Controls dim and a pause overlay covers the screen.",rule:"idle time > 5 s"},
+  ERROR:{field:"#5e1620",glow:"#b8323f",acc:"#ffc2c6",dot:"#f2646a",name:"Error",d:"Input is there but matches no pattern, so the engine switches to assistance mode.",rule:"no rule above matched"},
+  PAUSED:{field:"#26272b",glow:"#4b4e57",acc:"#d6d7da",dot:"#8d9099",name:"Paused",d:"Monitoring is paused. Nothing is captured until you resume.",rule:"set by you"}
+};
+const ORDER = ["ACTIVE","FOCUS","IDLE","ERROR"], RULE_ORDER = ["IDLE","FOCUS","ACTIVE","ERROR"];
+const $ = id => document.getElementById(id);
+const rs = document.documentElement.style;
+
+$("states").innerHTML = ORDER.map(k=>`<div class="st" id="st-${k}" style="--c:${S[k].dot}"><div class="n">${S[k].name}<i></i></div><div class="r">${S[k].rule}</div><div class="t" id="seen-${k}">Not seen yet</div></div>`).join("");
+$("rules").innerHTML = RULE_ORDER.map(k=>`<tr><td><span class="chip" style="--c:${S[k].dot}">${k}</span></td><td>${S[k].rule}</td></tr>`).join("");
+$("stLegend").innerHTML = ORDER.map(k=>`<i class="s" style="background:${S[k].dot}"></i>${S[k].name}`).join(" ");
+const TR = [["keys","Keys","i-key","/s","FOCUS when > 2"],["clicks","Clicks","i-click","/s","ACTIVE when > 3"],["move","Movement","i-move","px/s","ACTIVE when > 200"],["scroll","Scroll","i-scroll","/s","ACTIVE when > 1"]];
+$("traces").innerHTML = TR.map(([k,n,ic,u,r])=>`<div class="tr"><div class="h"><svg class="i"><use href="#${ic}"/></svg>${n}</div><div class="v"><span id="v-${k}">0</span><small>${u}</small></div><div class="rule">${r}</div><canvas id="c-${k}"></canvas></div>`).join("");
+
+/* signals */
+const N = 120, hist = {keys:[],clicks:[],move:[],scroll:[],state:[]};
+let mode = "demo", paused = false, events = 0;
+const raw = {keys:0,clicks:0,move:0,scroll:0}; let lastInput = performance.now();
+const bump = (k,v=1)=>{ if(mode!=="live"||paused) return; raw[k]+=v; lastInput = performance.now(); events++; };
+addEventListener("keydown",()=>bump("keys"));
+addEventListener("pointerdown",()=>bump("clicks"));
+addEventListener("pointermove",e=>bump("move",Math.abs(e.movementX||0)+Math.abs(e.movementY||0)));
+addEventListener("wheel",()=>bump("scroll"),{passive:true});
+let ty=null; addEventListener("touchstart",e=>{ty=e.touches[0].clientY},{passive:true});
+addEventListener("touchmove",e=>{const y=e.touches[0].clientY; if(ty!==null&&Math.abs(y-ty)>30){bump("scroll");ty=y}},{passive:true});
+
+const SCRIPT = [["type",9],["browse",7],["hesitate",4],["type",6],["quiet",8],["browse",5]];
+let sIdx=0, sT=0, demoIdle=0;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function demoSample(){
+  const [b,len]=SCRIPT[sIdx]; sT+=.5; if(sT>=len){sT=0;sIdx=(sIdx+1)%SCRIPT.length;}
+  let s;
+  if(b==="type") s={keys:rnd(3,7),clicks:rnd(0,.4),move:rnd(0,35),scroll:0};
+  else if(b==="browse") s={keys:rnd(0,.6),clicks:rnd(2.5,6),move:rnd(250,900),scroll:rnd(0,3)};
+  else if(b==="hesitate") s={keys:rnd(.5,1.8),clicks:rnd(.5,1.5),move:rnd(60,150),scroll:0};
+  else s={keys:0,clicks:0,move:0,scroll:0};
+  demoIdle=(s.keys+s.clicks+s.move+s.scroll)>0?0:demoIdle+.5;
+  return {...s,idle:demoIdle};
+}
+function liveSample(){ const s={keys:raw.keys*2,clicks:raw.clicks*2,move:raw.move*2,scroll:raw.scroll*2,idle:(performance.now()-lastInput)/1000}; raw.keys=raw.clicks=raw.move=raw.scroll=0; return s; }
+
+/* FSM, mirrors state_engine.py */
+const avg = {keys:[],clicks:[],move:[],scroll:[]};
+let state="FOCUS", cand=null, candN=0, since=performance.now(), log=[], conf=0, vNow=null;
+const seen = {};
+const clock = ()=> vNow ?? performance.now();
+const wall = t => new Date(Date.now()-(performance.now()-t));
+function classify(m){
+  if(m.idle>5) return "IDLE";
+  if(m.keys>2&&m.move<50&&m.scroll<2) return "FOCUS";
+  if(m.clicks>3||m.move>200||m.scroll>1) return "ACTIVE";
+  return "ERROR";
+}
+function confidence(st,m){ const c=x=>Math.max(0,Math.min(1,x));
+  if(st==="IDLE") return c(.6+(m.idle-5)/10);
+  if(st==="FOCUS") return c(.45+(m.keys-2)/8+(50-m.move)/200);
+  if(st==="ACTIVE") return c(.4+Math.max(m.clicks/10,m.move/1200,m.scroll/4));
+  return c(.25+Math.random()*.15); }
+const avgOf = k=>{const a=avg[k]; return a.length?a.reduce((x,y)=>x+y,0)/a.length:0;};
+const fmt=(v,d)=>v.toFixed(d);
+
+function setState(next){
+  if(next===state) return;
+  const held=((clock()-since)/1000).toFixed(1);
+  log.unshift({t:wall(clock()).toTimeString().slice(0,8),a:state,b:next,h:held}); log=log.slice(0,60);
+  $("log").innerHTML = log.map(l=>`<li><time>${l.t}</time><span class="chip" style="--c:${S[l.a].dot}">${l.a}</span><span class="chip" style="--c:${S[l.b].dot}">${l.b}</span><span class="d">${l.h} s</span></li>`).join("");
+  $("logCount").textContent = log.length+(log.length===1?" transition":" transitions");
+  $("kTrans").textContent = log.length;
+  seen[state] = clock();
+  state=next; since=clock(); if(vNow===null) paint(true);
+}
+function paint(animate){
+  const t=S[state];
+  rs.setProperty("--field",t.field); rs.setProperty("--glow",t.glow); rs.setProperty("--acc",t.acc);
+  const h=$("title");
+  if(animate && h.textContent!==t.name){ h.classList.add("swap"); setTimeout(()=>{h.textContent=t.name;h.classList.remove("swap");},300); } else h.textContent=t.name;
+  $("desc").textContent=t.d;
+  ORDER.forEach(k=>$("st-"+k).classList.toggle("on",k===state));
+}
+function seenText(){
+  const now=clock();
+  ORDER.forEach(k=>{ $("seen-"+k).textContent = k===state ? "Now" : seen[k]!==undefined ? `Last seen ${Math.round((now-seen[k])/1000)} s ago` : "Not seen yet"; });
+}
+
+/* drawer charts */
+function sizeCanvas(c){ const r=c.getBoundingClientRect(), d=devicePixelRatio||1; if(c.width!==Math.round(r.width*d)||c.height!==Math.round(r.height*d)){c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);} const x=c.getContext("2d"); x.setTransform(d,0,0,d,0,0); return [x,r.width,r.height]; }
+function spark(k){
+  const [x,W,H]=sizeCanvas($("c-"+k)), a=hist[k]; x.clearRect(0,0,W,H); if(a.length<2) return;
+  const max=Math.max(...a,k==="move"?250:4), col=S[state].dot;
+  const pt=i=>[W*(i+N-a.length)/(N-1),H-3-(H-6)*(a[i]/max)];
+  x.beginPath(); a.forEach((v,i)=>{const[p,q]=pt(i); i?x.lineTo(p,q):x.moveTo(p,q);});
+  x.strokeStyle=col; x.lineWidth=1.5; x.stroke();
+  x.lineTo(W,H); x.lineTo(pt(0)[0],H); const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,col+"44"); g.addColorStop(1,col+"00"); x.fillStyle=g; x.fill();
+}
+function timeline(){
+  const [x,W,H]=sizeCanvas($("tl")); x.clearRect(0,0,W,H);
+  const top=6, band=12, bot=H-band-22, L=W<420?4:28, max=Math.max(8,...hist.keys,...hist.clicks);
+  x.font="12px Inter Tight, sans-serif"; x.fillStyle="#6c7078"; x.strokeStyle="#22242a"; x.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=top+(bot-top)*i/4; x.beginPath(); x.moveTo(L,y); x.lineTo(W,y); x.stroke(); if(W>=420) x.fillText(fmt(max*(1-i/4),0),0,y+4);}
+  const xs=i=>L+(W-L)*(i+N-hist.keys.length)/(N-1);
+  const line=(arr,col,dash)=>{ if(arr.length<2) return; x.beginPath(); arr.forEach((v,i)=>{const p=xs(i),q=bot-(bot-top)*v/max; i?x.lineTo(p,q):x.moveTo(p,q);}); x.setLineDash(dash); x.strokeStyle=col; x.lineWidth=1.8; x.stroke(); x.setLineDash([]); };
+  line(hist.keys,"#ededee",[]); line(hist.clicks,"#8d929b",[5,4]);
+  const bw=(W-L)/(N-1); hist.state.forEach((s,i)=>{x.fillStyle=S[s].dot; x.fillRect(xs(i)-bw/2,H-band-12,bw+.5,band);});
+  x.fillStyle="#6c7078"; x.fillText("60 s ago",L,H-1); const nw=x.measureText("now").width; x.fillText("now",W-nw,H-1);
+}
+let frames=[], lastF=performance.now(), lastTick=performance.now(), jitter=0, evRate=0;
+(function fr(now){ frames.push(now-lastF); lastF=now; if(frames.length>60) frames.shift(); requestAnimationFrame(fr); })(lastF);
+function health(){
+  const ft=frames.reduce((a,b)=>a+b,0)/Math.max(1,frames.length);
+  const mem=performance.memory?(performance.memory.usedJSHeapSize/1048576).toFixed(1)+" MB":"n/a";
+  $("eh").innerHTML=[["Frame time",ft.toFixed(1)+" ms"],["Render rate",Math.round(1000/ft)+" fps"],["Tick jitter",jitter.toFixed(1)+" ms"],["Input events",evRate+" /s"],["JS heap",mem]].map(([k,v])=>`<div class="kv"><span>${k}</span><b>${v}</b></div>`).join("");
+}
+const isOpen=()=>document.body.classList.contains("open");
+function drawStats(){ TR.forEach(([k])=>spark(k)); timeline(); health(); }
+
+/* loop, 500 ms like main.py */
+function tick(){
+  const now=clock(); if(vNow===null){ jitter=Math.abs(now-lastTick-500); lastTick=now; evRate=events*2; events=0; }
+  if(paused){ if(state!=="PAUSED") setState("PAUSED"); }
+  else {
+    const s=mode==="demo"?demoSample():liveSample();
+    for(const k of ["keys","clicks","move","scroll"]){ avg[k].push(s[k]); if(avg[k].length>3) avg[k].shift(); }
+    const m={keys:avgOf("keys"),clicks:avgOf("clicks"),move:avgOf("move"),scroll:avgOf("scroll"),idle:s.idle};
+    const c=classify(m); if(c===cand) candN++; else {cand=c;candN=1;}
+    if(candN>=2) setState(c);
+    conf=confidence(state,m);
+    for(const k of ["keys","clicks","move","scroll"]){ hist[k].push(m[k]); if(hist[k].length>N) hist[k].shift(); }
+    $("v-keys").textContent=fmt(m.keys,1); $("v-clicks").textContent=fmt(m.clicks,1); $("v-move").textContent=fmt(m.move,0); $("v-scroll").textContent=fmt(m.scroll,1);
+  }
+  hist.state.push(state); if(hist.state.length>N) hist.state.shift();
+  if(vNow!==null) return;
+  $("kTime").textContent=fmt((now-since)/1000,1)+" s"; $("kConf").textContent=fmt(conf,2);
+  seenText(); if(isOpen()) drawStats();
+}
+
+/* controls */
+function setMode(m){ mode=m; $("mDemo").setAttribute("aria-pressed",m==="demo"); $("mLive").setAttribute("aria-pressed",m==="live");
+  $("srcNote").textContent = m==="demo" ? "Current state · scripted demo session" : "Current state · reading your keys, clicks and scroll";
+  lastInput=performance.now(); demoIdle=0; sIdx=0; sT=0; }
+$("mDemo").onclick=()=>setMode("demo"); $("mLive").onclick=()=>setMode("live");
+$("pause").onclick=()=>{ paused=!paused; $("pause").innerHTML=paused?'<svg class="i"><use href="#i-play"/></svg><span>Resume</span>':'<svg class="i"><use href="#i-pause"/></svg><span>Pause</span>'; if(!paused){lastInput=performance.now();cand=null;} };
+function openStats(o){ document.body.classList.toggle("open",o); $("openStats").setAttribute("aria-expanded",o); if(o){ drawStats(); $("closeStats").focus(); } else $("openStats").focus(); }
+$("openStats").onclick=()=>openStats(true); $("closeStats").onclick=()=>openStats(false); $("scrim").onclick=()=>openStats(false);
+addEventListener("keydown",e=>{ if(e.key==="Escape"&&isOpen()) openStats(false); });
+const ro=new ResizeObserver(()=>{ if(isOpen()) drawStats(); }); ro.observe($("drawer"));
+
+/* prefill 60 s of history so stats open with data */
+{ const t0=performance.now(); for(let i=N;i>0;i--){ vNow=t0-i*500; tick(); } vNow=null; }
+paint(false); tick(); setInterval(tick,500);
+}
+</script>
+</body>
+</html>
