@@ -18,8 +18,13 @@ Production Fixes:
 """
 
 import logging
+import os
+import queue
+import subprocess
 import sys
+import threading
 import time
+from datetime import date
 import customtkinter as ctk
 from event_capture import EventCapture
 from analyzer import compute_metrics
@@ -27,9 +32,12 @@ from state_engine import StateEngine
 from ui_controller import AdaptiveUI
 from overlay_manager import OverlayController
 from tray_icon import TrayIcon
-from system_bridge import apply_system_effects, reset_brightness, get_foreground_app
-from config import load_config, save_config, Calibrator
+from system_bridge import apply_system_effects, reset_brightness, get_foreground_app, notify
+from config import load_config, save_config, config_path, Calibrator
 from storage import SessionStore
+from insights import daily_summary, day_bounds
+from focus_actions import BreakReminder, WindowsDnd, start_hotkey, hotkey_label
+import oslayer
 
 # ─── Logging Setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -94,11 +102,21 @@ class AdaptiveEngine:
         )
 
         # ─── System Tray ───
-        self.tray = TrayIcon(
-            on_open_dashboard=self._toggle_dashboard,
-            on_toggle_pause=self._toggle_pause,
-            on_exit=self._exit_app,
-        )
+        # ─── Focus actions (Phase 4) ───
+        self._events = queue.Queue()  # hotkey + background results → Tk thread
+        self.breaks = BreakReminder()
+        self.dnd = WindowsDnd()
+        self._dnd_active = False
+        self._dnd_busy = False
+        self._hotkey = None
+        self._recover_dnd()
+
+        self.tray = TrayIcon(flags={
+            "breaks": self.config["focus"].get("break_reminders", True),
+            "dnd": self.config["focus"].get("dnd", False),
+            "dnd_available": self.dnd.available(),
+            "autostart": oslayer.autostart_enabled(),
+        })
 
         # ─── Track state for overlay decisions ───
         self._prev_state = None
@@ -119,6 +137,13 @@ class AdaptiveEngine:
         # Start system tray icon
         self.tray.start()
         logger.info("System tray icon started.")
+
+        # Global pause hotkey (events are handled on the Tk thread)
+        self._hotkey = start_hotkey(lambda: self._events.put("pause"))
+        if self._hotkey:
+            logger.info("Pause hotkey: %s", hotkey_label())
+
+        self._first_run_notice()
 
         # Start the 500ms update cycle
         self._update_cycle()
@@ -190,6 +215,14 @@ class AdaptiveEngine:
             # 3c. Session history: store the finished segment on every state change
             self._track_segment(state, metrics)
 
+            # 3d. Tray menu, hotkey and background results
+            self._drain_events()
+            if self._shutting_down:
+                return  # Exit was chosen; windows are gone
+
+            # 3e. Focus actions: break reminder and experimental Do Not Disturb
+            self._focus_actions(state, interval)
+
             # 4. Update tray icon state
             self.tray.update_state(state)
 
@@ -213,6 +246,150 @@ class AdaptiveEngine:
             # 7. Schedule next cycle safely regardless of errors
             if not self._shutting_down:
                 self.root.after(75, self._update_cycle)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # EVENTS, SETTINGS AND FOCUS ACTIONS (Phase 4)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def _save_config(self):
+        try:
+            save_config(self.config)
+        except Exception:
+            logger.exception("Could not save config.json")
+
+    def _first_run_notice(self):
+        parts = []
+        if not self.config.get("first_run_notice_shown"):
+            parts.append("Adaptive UI counts keystrokes, clicks, mouse movement and scrolling. "
+                         "It never records what you type or which keys. "
+                         f"Pause any time with {hotkey_label()}.")
+            self.config["first_run_notice_shown"] = True
+            self._save_config()
+        warning = oslayer.session_warning()
+        if warning:
+            parts.append(warning)
+            logger.warning(warning)
+        if parts:
+            notify("Adaptive UI Engine", " ".join(parts))
+
+    def _drain_events(self):
+        events = self.tray.poll_events()
+        while True:
+            try:
+                events.append(self._events.get_nowait())
+            except queue.Empty:
+                break
+        for event in events:
+            try:
+                self._handle_event(event)
+            except Exception:
+                logger.exception("Failed to handle event %r", event)
+
+    def _handle_event(self, event):
+        if isinstance(event, tuple):  # background results
+            kind, value = event
+            if kind == "dnd_enabled":
+                self._dnd_busy = False
+                if value:
+                    self._dnd_active = True
+                    self.config["focus"]["dnd_restore"] = value
+                    self._save_config()
+            elif kind == "dnd_restored":
+                self._dnd_busy = False
+                if value:
+                    self._dnd_active = False
+                    self.config["focus"]["dnd_restore"] = None
+                    self._save_config()
+            return
+
+        focus = self.config["focus"]
+        if event == "open":
+            self._do_toggle_dashboard()
+        elif event == "pause":
+            self._toggle_pause()
+        elif event == "exit":
+            self._do_exit_app()
+        elif event == "summary":
+            self._show_summary()
+        elif event == "toggle_breaks":
+            focus["break_reminders"] = not focus.get("break_reminders", True)
+            self.breaks.reset()
+            self.tray.set_flags(breaks=focus["break_reminders"])
+            self._save_config()
+        elif event == "toggle_dnd":
+            focus["dnd"] = not focus.get("dnd", False)
+            self.tray.set_flags(dnd=focus["dnd"])
+            self._save_config()
+            if not focus["dnd"]:
+                self._dnd_restore_async()
+        elif event == "toggle_autostart":
+            wanted = not oslayer.autostart_enabled()
+            if oslayer.set_autostart(wanted):
+                self.tray.set_flags(autostart=wanted)
+            else:
+                notify("Adaptive UI Engine", "Could not change the start-at-login setting.")
+        elif event == "recalibrate":
+            self.calibrator = Calibrator(self.config["calibration"].get("duration_seconds", 120))
+            notify("Adaptive UI Engine", "Recalibrating for two minutes. Keep working normally.")
+        elif event == "open_config":
+            self._save_config()
+            self._open_path(config_path())
+
+    @staticmethod
+    def _open_path(path):
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # noqa: S606 - opens the user's own settings file
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            logger.exception("Could not open %s", path)
+
+    def _show_summary(self):
+        if self.store is None:
+            notify("Today", "Session history is turned off.")
+            return
+        self.store.flush()
+        start, end = day_bounds(date.today())
+        s = daily_summary(self.store.segments_between(start, end), date.today())
+        apps = ", ".join(app for app, _ in s["top_focus_apps"]) or "none yet"
+        notify("Today", f"Focus {s['focus_minutes']:.0f} min · longest streak "
+                        f"{s['longest_focus_streak_minutes']:.0f} min · "
+                        f"{s['interruptions']} interruptions · top apps: {apps}")
+
+    def _focus_actions(self, state, interval):
+        focus = self.config["focus"]
+        live_state = "PAUSED" if self.is_paused else state
+        if focus.get("break_reminders", True) and self.breaks.update(live_state, interval):
+            notify("Time for a break", "You have been focused for 50 minutes.")
+
+        if not (focus.get("dnd") and self.dnd.available()) or self._dnd_busy:
+            return
+        in_focus = live_state == "FOCUS" and self.engine.get_state_duration() >= 60
+        left_focus = live_state != "FOCUS" and (self.breaks.away_s >= 120 or self.is_paused)
+        if in_focus and not self._dnd_active:
+            self._dnd_busy = True
+            threading.Thread(target=lambda: self._events.put(("dnd_enabled", self.dnd.enable())),
+                             daemon=True).start()
+        elif left_focus and self._dnd_active:
+            self._dnd_restore_async()
+
+    def _dnd_restore_async(self):
+        if not self._dnd_active or self._dnd_busy:
+            return
+        self._dnd_busy = True
+        threading.Thread(target=lambda: self._events.put(("dnd_restored", self.dnd.restore())),
+                         daemon=True).start()
+
+    def _recover_dnd(self):
+        """After a crash, put Do Not Disturb back the way the user had it."""
+        saved = self.config["focus"].get("dnd_restore")
+        if saved and self.dnd.available() and self.dnd.restore(original=saved):
+            logger.info("Restored Do Not Disturb after an unclean exit.")
+            self.config["focus"]["dnd_restore"] = None
+            self._save_config()
 
     def _track_segment(self, state, metrics, closing=False):
         """Record the previous segment when the state changes (or on exit)."""
@@ -315,6 +492,15 @@ class AdaptiveEngine:
             restore_mouse_speed()
         except Exception:
             logger.exception("Failed to reset system effects")
+
+        try:
+            if self._dnd_active and self.dnd.restore():
+                self.config["focus"]["dnd_restore"] = None
+                self._save_config()
+            if self._hotkey is not None:
+                self._hotkey.stop()
+        except Exception:
+            logger.exception("Failed to undo focus actions")
 
         try:
             if self.store is not None:

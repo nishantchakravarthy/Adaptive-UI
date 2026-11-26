@@ -81,6 +81,12 @@ DEFAULTS = {
         "enabled": True,
         "retention_days": 90,
     },
+    "focus": {
+        "break_reminders": True,
+        "dnd": False,             # experimental, Windows only
+        "dnd_restore": None,      # profile to restore after a crash
+    },
+    "first_run_notice_shown": False,
 }
 
 MIN_CALIBRATION_ACTIVE_S = 60.0
