@@ -77,6 +77,15 @@ python main.py
 
 pip install pytest
 python -m pytest
+# 🌐 Web Dashboard Demo
+`web/index.html` is a standalone browser version of the dashboard. It runs the same FSM rules as `state_engine.py` (3-sample moving average, 2-cycle debounce, IDLE → FOCUS → ACTIVE → ERROR priority).
+
+- **Main view:** the current state shown large on a colour field that changes per state, plus a row of all four states with when each was last seen.
+- **Statistics drawer:** live graphs for keys, clicks, movement and scroll, a 60-second timeline with the chosen state underneath, the transition log, engine health and the decision rules.
+- **Demo signals / Your input:** play a scripted session, or drive the FSM with your own keyboard, mouse and scroll.
+
+Open `web/index.html` in any modern browser. No install or build step.
+
 # 👥 Authors
 **Nishant Chakravarthy** - System Architecture & FSM Design
 
